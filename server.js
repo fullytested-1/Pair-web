@@ -130,6 +130,18 @@ function publicState(doc) {
   };
 }
 
+const BROWSER_PROFILES = [
+  Browsers.macOS("Safari"),
+  Browsers.windows("Edge"),
+  Browsers.macOS("Desktop"),
+  Browsers.ubuntu("Chrome"),
+  Browsers.macOS("Chrome")
+];
+
+function getRandomBrowser() {
+  return BROWSER_PROFILES[Math.floor(Math.random() * BROWSER_PROFILES.length)];
+}
+
 function rateLimit(ip) {
   const now = Date.now();
   const current = attempts.get(ip) || { count: 0, at: now };
@@ -180,7 +192,7 @@ async function startSocket(sessionId, phoneNumber, mode) {
     version,
     auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" })) },
     printQRInTerminal: false,
-    browser: Browsers.ubuntu("Chrome"),
+    browser: getRandomBrowser(),
     connectTimeoutMs: 60000,
     qrTimeout: 60000,
     defaultQueryTimeoutMs: 60000,
