@@ -192,7 +192,10 @@ async function startSocket(sessionId, phoneNumber, mode, restartCount = 0) {
     version,
     auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" })) },
     printQRInTerminal: false,
-    browser: getRandomBrowser(),
+    // Pairing-code flow is stricter than QR. Use a canonical browser
+    // profile for pairing; randomized Desktop/Safari profiles can be rejected
+    // by WhatsApp with 428 even when QR pairing works.
+    browser: mode === "pair" ? Browsers.macOS("Chrome") : getRandomBrowser(),
     connectTimeoutMs: 60000,
     qrTimeout: 60000,
     defaultQueryTimeoutMs: 60000,
