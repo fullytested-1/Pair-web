@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ROMA Pairing</title><link rel="stylesheet" href="/style.css"></head>
+<body><main class="container"><section class="card"><div class="logo">R</div><h1>ROMA</h1><p class="subtitle">WhatsApp Session Generator</p>
+<div class="tabs"><button id="pairTab" class="tab active">📱 Pair Code</button><button id="qrTab" class="tab">📷 QR Code</button></div>
+<section id="pairSection"><label>Country Code</label><input id="countryCode" inputmode="numeric" value="+91"><label>Phone Number</label><input id="phoneNumber" type="tel" inputmode="numeric" placeholder="9876543210"><button id="pairButton" class="primary">Generate Pair Code</button></section>
+<section id="qrSection" class="hidden"><button id="qrButton" class="primary">Generate QR</button><div id="qrContainer" class="qr-container hidden"><img id="qrImage" alt="WhatsApp QR"><p>WhatsApp → Linked Devices → Link a device</p></div></section>
+<section id="codeContainer" class="result hidden"><span>Pairing Code</span><strong id="pairCode">--------</strong><button id="copyCode" class="secondary">Copy Code</button></section>
+<div class="status"><span id="statusDot" class="status-dot"></span><span id="statusText">Waiting...</span></div>
+<section id="sessionContainer" class="session hidden"><h3>✅ Connected</h3><p>Your Session ID:</p><div class="session-box"><code id="sessionId"></code><button id="copySession" class="secondary">Copy</button></div><div class="warning">⚠️ Keep this Session ID private.</div></section>
+<footer>ROMA WhatsApp System</footer></section></main><script src="/app.js"></script></body></html>

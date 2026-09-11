@@ -1,0 +1,17 @@
+{
+  "name":"roma-pairing-web",
+  "version":"1.0.0",
+  "private":true,
+  "type":"module",
+  "main":"server.js",
+  "scripts":{"start":"node server.js","dev":"node --watch server.js"},
+  "engines":{"node":">=22.0.0"},
+  "dependencies":{
+    "@whiskeysockets/baileys":"^6.7.18",
+    "dotenv":"^16.4.7",
+    "express":"^5.1.0",
+    "mongoose":"^8.18.0",
+    "pino":"^9.9.4",
+    "qrcode":"^1.5.4"
+  }
+}

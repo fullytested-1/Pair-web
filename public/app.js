@@ -1,0 +1,11 @@
+const $=id=>document.getElementById(id);let sid=null,timer=null;
+const pairTab=$("pairTab"),qrTab=$("qrTab"),pairSection=$("pairSection"),qrSection=$("qrSection");
+function status(t,c=""){ $("statusText").textContent=t;$("statusDot").className="status-dot "+c}
+pairTab.onclick=()=>{pairTab.classList.add("active");qrTab.classList.remove("active");pairSection.classList.remove("hidden");qrSection.classList.add("hidden")};
+qrTab.onclick=()=>{qrTab.classList.add("active");pairTab.classList.remove("active");qrSection.classList.remove("hidden");pairSection.classList.add("hidden")};
+async function create(url,body){const r=await fetch(url,{method:"POST",headers:body?{"Content-Type":"application/json"}:{},body:body?JSON.stringify(body):undefined});const d=await r.json();if(!r.ok||!d.success)throw Error(d.error||"Request failed");return d}
+$("pairButton").onclick=async()=>{try{$("pairButton").disabled=true;status("Connecting...");const d=await create("/api/pair",{countryCode:$("countryCode").value,phoneNumber:$("phoneNumber").value});sid=d.sessionId;poll()}catch(e){status(e.message,"error")}finally{$("pairButton").disabled=false}};
+$("qrButton").onclick=async()=>{try{$("qrButton").disabled=true;status("Creating QR...");const d=await create("/api/qr");sid=d.sessionId;poll()}catch(e){status(e.message,"error")}finally{$("qrButton").disabled=false}};
+function poll(){clearInterval(timer);timer=setInterval(async()=>{try{const r=await fetch("/api/session/"+encodeURIComponent(sid));const d=await r.json();if(!d.success)return;if(d.qr){$("qrImage").src=d.qr;$("qrContainer").classList.remove("hidden");status("Scan the QR code")}if(d.pairingCode){$("pairCode").textContent=d.pairingCode;$("codeContainer").classList.remove("hidden");status("Enter the code in WhatsApp")}if(d.status==="connected"){clearInterval(timer);status("Connected","success");$("sessionId").textContent=d.sessionId;$("sessionContainer").classList.remove("hidden")}if(d.status==="error"){clearInterval(timer);status(d.error||"Connection failed","error")}if(d.status==="logged_out"){clearInterval(timer);status("Logged out","error")}}catch(e){}},1500)}
+$("copyCode").onclick=()=>navigator.clipboard.writeText($("pairCode").textContent);
+$("copySession").onclick=()=>navigator.clipboard.writeText($("sessionId").textContent);
