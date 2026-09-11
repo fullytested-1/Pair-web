@@ -74,6 +74,16 @@ const Auth = mongoose.model("Auth", authSchema);
 const sockets = new Map();
 const attempts = new Map();
 
+const botMessageSchema = new mongoose.Schema({
+  sessionId: { type: String, index: true },
+  messageId: { type: String, index: true },
+  from: String,
+  text: String,
+  createdAt: { type: Date, default: Date.now, index: true }
+}, { collection: "roma_bot_messages" });
+botMessageSchema.index({ sessionId: 1, createdAt: 1 });
+const BotMessage = mongoose.model("BotMessage", botMessageSchema);
+
 function encrypt(value) {
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv("aes-256-gcm", ENC_KEY, iv);
@@ -382,6 +392,28 @@ async function startSocket(sessionId, phoneNumber, mode, restartCount = 0) {
     }
   });
 
+  sock.ev.on("messages.upsert", async ({ messages }) => {
+    for (const msg of messages || []) {
+      if (!msg?.message || msg.key?.fromMe) continue;
+      const text =
+        msg.message.conversation ||
+        msg.message.extendedTextMessage?.text ||
+        msg.message.imageMessage?.caption ||
+        msg.message.videoMessage?.caption ||
+        "";
+      if (!text.trim()) continue;
+      try {
+        await BotMessage.findOneAndUpdate(
+          { sessionId, messageId: msg.key.id },
+          { $setOnInsert: { sessionId, messageId: msg.key.id, from: msg.key.remoteJid, text: text.trim(), createdAt: new Date() } },
+          { upsert: true }
+        );
+      } catch (err) {
+        console.error("Bot message store failed:", err?.message || err);
+      }
+    }
+  });
+
   if (mode === "pair" && !state.creds.registered) {
     // Request the code exactly once for this socket.
     // Do not call requestPairingCode twice.
@@ -540,7 +572,69 @@ async function readSession(req, res) {
 }
 
 app.get("/api/session/:sessionId", readSession);
-app.get("/api/status/:sessionId", readSession);
+app.get("/api/status/:sessionId", readSession);\napp.get("/api/bot/messages/:sessionId", async (req, res) => {
+  try {
+    const id = req.params.sessionId;
+    if (!id.startsWith(PREFIX)) return res.status(404).json({ success: false });
+    const after = Number(req.query.after || 0);
+    const docs = await BotMessage.find({ sessionId: id }).sort({ createdAt: 1 }).limit(100).lean();
+    const messages = docs.map((x, i) => ({ id: x.messageId, from: x.from, text: x.text, createdAt: x.createdAt, cursor: i + 1 }));
+    const filtered = after ? messages.filter(x => x.cursor > after) : messages;
+    res.json({ success: true, messages: filtered, cursor: messages.length ? messages[messages.length - 1].cursor : after });
+  } catch (err) {
+    res.status(500).json({ success: false, error: "Unable to read bot messages" });
+  }
+});
+
+app.post("/api/bot/send/:sessionId", async (req, res) => {
+  try {
+    const id = req.params.sessionId;
+    if (!id.startsWith(PREFIX)) return res.status(404).json({ success: false });
+    const to = String(req.body?.to || "");
+    const text = String(req.body?.text || "");
+    if (!to || !text) return res.status(400).json({ success: false, error: "to and text are required" });
+    const sock = sockets.get(id);
+    if (!sock) return res.status(409).json({ success: false, error: "Session is not connected" });
+    await sock.sendMessage(to, { text });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err?.message || "Send failed" });
+  }
+});
+
+app.post("/api/bot/send-video/:sessionId", async (req, res) => {
+  try {
+    const id = req.params.sessionId;
+    const to = String(req.body?.to || "");
+    const url = String(req.body?.url || "");
+    const caption = String(req.body?.caption || "");
+    if (!id.startsWith(PREFIX) || !to || !url) return res.status(400).json({ success: false, error: "Invalid request" });
+    const sock = sockets.get(id);
+    if (!sock) return res.status(409).json({ success: false, error: "Session is not connected" });
+    await sock.sendMessage(to, { video: { url }, caption });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err?.message || "Send failed" });
+  }
+});
+
+app.post("/api/bot/send-image/:sessionId", async (req, res) => {
+  try {
+    const id = req.params.sessionId;
+    const to = String(req.body?.to || "");
+    const url = String(req.body?.url || "");
+    const caption = String(req.body?.caption || "");
+    if (!id.startsWith(PREFIX) || !to || !url) return res.status(400).json({ success: false, error: "Invalid request" });
+    const sock = sockets.get(id);
+    if (!sock) return res.status(409).json({ success: false, error: "Session is not connected" });
+    await sock.sendMessage(to, { image: { url }, caption });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err?.message || "Send failed" });
+  }
+});
+
+
 
 app.delete("/api/session/:sessionId", async (req, res) => {
   try {
