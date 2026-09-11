@@ -179,7 +179,7 @@ async function startSocket(sessionId, phoneNumber, mode) {
     version,
     auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" })) },
     printQRInTerminal: false,
-    browser: Browsers.ubuntu("Chrome"),
+    browser: Browsers.macOS("Desktop"),
     logger: pino({ level: "silent" }),
     markOnlineOnConnect: false,
     syncFullHistory: false
@@ -187,8 +187,23 @@ async function startSocket(sessionId, phoneNumber, mode) {
   sockets.set(sessionId, sock);
   sock.ev.on("creds.update", saveCreds);
 
+  let connectingResolve;
+  let connectingReject;
+  const connectingReady = new Promise((resolve, reject) => {
+    connectingResolve = resolve;
+    connectingReject = reject;
+  });
+  const connectingTimeout = setTimeout(() => {
+    connectingReject(new Error("WhatsApp socket did not reach connecting state in time"));
+  }, 15000);
+
   sock.ev.on("connection.update", async update => {
     const { connection, lastDisconnect, qr } = update;
+
+    if (connection === "connecting" || qr) {
+      clearTimeout(connectingTimeout);
+      connectingResolve();
+    }
     try {
       if (qr && mode === "qr") {
         const dataUrl = await QRCode.toDataURL(qr, { margin: 1, width: 320 });
@@ -205,7 +220,21 @@ async function startSocket(sessionId, phoneNumber, mode) {
         if (code === DisconnectReason.loggedOut) {
           await removeSession(sessionId);
         } else if (sockets.has(sessionId)) {
-          await updateSession(sessionId, { status: "error", error: "WhatsApp connection closed. Reconnect by creating a new session." });
+          const message =
+            lastDisconnect?.error?.output?.payload?.message ||
+            lastDisconnect?.error?.message ||
+            "WhatsApp connection closed";
+          const detail = code ? ` (code ${code})` : "";
+          console.error("WhatsApp connection closed:", {
+            sessionId,
+            code,
+            message,
+            error: lastDisconnect?.error
+          });
+          await updateSession(sessionId, {
+            status: "error",
+            error: `${message}${detail}. Reconnect by creating a new session.`
+          });
           sockets.delete(sessionId);
         }
       }
@@ -215,7 +244,9 @@ async function startSocket(sessionId, phoneNumber, mode) {
   });
 
   if (mode === "pair") {
-    await new Promise(r => setTimeout(r, 1500));
+    // Pairing-code requests must wait until the WebSocket has reached
+    // the connecting state. A fixed sleep is race-prone on cloud hosts.
+    await connectingReady;
     const code = await sock.requestPairingCode(phoneNumber);
     await updateSession(sessionId, { status: "waiting", pairingCode: code, qr: null });
   } else {
