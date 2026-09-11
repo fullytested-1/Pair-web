@@ -12,7 +12,8 @@ const {
   Browsers,
   DisconnectReason,
   makeCacheableSignalKeyStore,
-  fetchLatestBaileysVersion
+  fetchLatestBaileysVersion,
+  initAuthCreds
 } = Baileys;
 
 // Baileys has shipped different ESM/CJS export shapes across releases.
@@ -141,7 +142,9 @@ function rateLimit(ip) {
 async function createAuthState(sessionId) {
   const creds = await loadAuth(sessionId, "creds", "creds");
   const state = {
-    creds: creds || undefined,
+    // A new Baileys session must start with initialized creds.
+    // Undefined creds cause socket.js to fail when it reads authState.creds.me.
+    creds: creds || initAuthCreds(),
     keys: {
       get: async (type, ids) => {
         const out = {};
