@@ -12,7 +12,7 @@ const {
   Browsers,
   DisconnectReason,
   makeCacheableSignalKeyStore,
-  fetchLatestBaileysVersion,
+  fetchLatestWaWebVersion,
   initAuthCreds
 } = Baileys;
 
@@ -174,7 +174,8 @@ async function updateSession(sessionId, patch) {
 
 async function startSocket(sessionId, phoneNumber, mode) {
   const { state, saveCreds } = await createAuthState(sessionId);
-  const { version } = await fetchLatestBaileysVersion();
+  // Use the live WhatsApp Web client revision. The Baileys "latest" helper can lag behind WhatsApp and cause 428 / "Couldn't link device" during new-device pairing.
+  const { version } = await fetchLatestWaWebVersion();
   const sock = makeWASocket({
     version,
     auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" })) },
@@ -255,6 +256,7 @@ async function startSocket(sessionId, phoneNumber, mode) {
       throw new Error("WhatsApp socket closed before pairing-code request");
     }
 
+    await new Promise(resolve => setTimeout(resolve, 1000));
     const code = await sock.requestPairingCode(phoneNumber);
     await updateSession(sessionId, {
       status: "waiting",
