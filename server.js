@@ -4,15 +4,32 @@ import mongoose from "mongoose";
 import crypto from "node:crypto";
 import QRCode from "qrcode";
 import pino from "pino";
-import makeWASocket, {
-  Browsers,
-  DisconnectReason,
-  useMultiFileAuthState,
-  makeCacheableSignalKeyStore,
-  fetchLatestBaileysVersion
-} from "@whiskeysockets/baileys";
+import * as Baileys from "@whiskeysockets/baileys";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+
+const {
+  Browsers,
+  DisconnectReason,
+  makeCacheableSignalKeyStore,
+  fetchLatestBaileysVersion
+} = Baileys;
+
+// Baileys has shipped different ESM/CJS export shapes across releases.
+// Resolve makeWASocket from either the default or named export so the app
+// works with the installed package without changing the dependency version.
+const makeWASocket =
+  typeof Baileys.default === "function"
+    ? Baileys.default
+    : typeof Baileys.makeWASocket === "function"
+      ? Baileys.makeWASocket
+      : typeof Baileys.default?.makeWASocket === "function"
+        ? Baileys.default.makeWASocket
+        : null;
+
+if (typeof makeWASocket !== "function") {
+  throw new Error("Unable to load makeWASocket from @whiskeysockets/baileys");
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -177,7 +194,7 @@ async function startSocket(sessionId, phoneNumber, mode) {
       if (connection === "open") {
         const jid = sock.user?.id || null;
         await updateSession(sessionId, { status: "connected", userJid: jid, qr: null, pairingCode: null, error: null });
-        const msg = "ROMA Session ID:\n" + sessionId;
+        const msg = "ROMA Session ID:\\n" + sessionId;
         if (jid) await sock.sendMessage(jid, { text: msg });
       }
       if (connection === "close") {
