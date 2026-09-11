@@ -179,7 +179,10 @@ async function startSocket(sessionId, phoneNumber, mode) {
     version,
     auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" })) },
     printQRInTerminal: false,
-    browser: Browsers.macOS("Desktop"),
+    browser: Browsers.ubuntu("Chrome"),
+    connectTimeoutMs: 60000,
+    qrTimeout: 60000,
+    defaultQueryTimeoutMs: 60000,
     logger: pino({ level: "silent" }),
     markOnlineOnConnect: false,
     syncFullHistory: false
@@ -244,11 +247,21 @@ async function startSocket(sessionId, phoneNumber, mode) {
   });
 
   if (mode === "pair") {
-    // Pairing-code requests must wait until the WebSocket has reached
-    // the connecting state. A fixed sleep is race-prone on cloud hosts.
+    // Pairing-code requests must wait for the socket's initial connection
+    // handshake. Cloud hosts can take longer than a fixed sleep.
     await connectingReady;
+
+    if (sock.ws?.readyState === 3) {
+      throw new Error("WhatsApp socket closed before pairing-code request");
+    }
+
     const code = await sock.requestPairingCode(phoneNumber);
-    await updateSession(sessionId, { status: "waiting", pairingCode: code, qr: null });
+    await updateSession(sessionId, {
+      status: "waiting",
+      pairingCode: code,
+      qr: null,
+      error: null
+    });
   } else {
     await updateSession(sessionId, { status: "waiting" });
   }
