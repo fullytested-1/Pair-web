@@ -184,7 +184,7 @@ async function updateSession(sessionId, patch) {
   await Session.updateOne({ sessionId }, { $set: { ...patch, updatedAt: new Date() } });
 }
 
-async function startSocket(sessionId, phoneNumber, mode) {
+async function startSocket(sessionId, phoneNumber, mode, restartCount = 0) {
   const { state, saveCreds } = await createAuthState(sessionId);
   // Use the live WhatsApp Web client revision. The Baileys "latest" helper can lag behind WhatsApp and cause 428 / "Couldn't link device" during new-device pairing.
   const { version } = await fetchLatestWaWebVersion();
@@ -233,20 +233,36 @@ async function startSocket(sessionId, phoneNumber, mode) {
       }
       if (connection === "close") {
         const code = lastDisconnect?.error?.output?.statusCode;
+        const message =
+          lastDisconnect?.error?.output?.payload?.message ||
+          lastDisconnect?.error?.message ||
+          "WhatsApp connection closed";
+
+        console.error("WhatsApp connection closed:", { sessionId, code, message });
+
         if (code === DisconnectReason.loggedOut) {
           await removeSession(sessionId);
-        } else if (sockets.has(sessionId)) {
-          const message =
-            lastDisconnect?.error?.output?.payload?.message ||
-            lastDisconnect?.error?.message ||
-            "WhatsApp connection closed";
-          const detail = code ? ` (code ${code})` : "";
-          console.error("WhatsApp connection closed:", {
-            sessionId,
-            code,
-            message,
-            error: lastDisconnect?.error
+          return;
+        }
+
+        // WhatsApp 515 means "restart required". Keep the same auth state
+        // and recreate the socket instead of showing a fatal error.
+        if ((code === 515 || code === DisconnectReason.restartRequired) && restartCount < 3 && sockets.has(sessionId)) {
+          await updateSession(sessionId, {
+            status: "connecting",
+            error: "WhatsApp requested a socket restart. Reconnecting..."
           });
+          sockets.delete(sessionId);
+          setTimeout(() => {
+            startSocket(sessionId, phoneNumber, mode, restartCount + 1).catch(async err => {
+              await updateSession(sessionId, { status: "error", error: err?.message || "Reconnect failed" });
+            });
+          }, 2000);
+          return;
+        }
+
+        if (sockets.has(sessionId)) {
+          const detail = code ? ` (code ${code})` : "";
           await updateSession(sessionId, {
             status: "error",
             error: `${message}${detail}. Reconnect by creating a new session.`
