@@ -310,17 +310,8 @@ async function startSocket(sessionId, phoneNumber, mode, restartCount = 0) {
           }
         }
 
-        // IMPORTANT: the pairing web must release its WhatsApp socket after
-        // pairing. The ROMA bot will use the encrypted credentials stored in
-        // MongoDB. Keeping two sockets connected with the same credentials
-        // causes WhatsApp 401 conflict errors.
-        try {
-          sockets.delete(sessionId);
-          if (typeof sock.end === "function") sock.end(undefined);
-          else if (sock.ws && typeof sock.ws.close === "function") sock.ws.close();
-        } catch (err) {
-          console.warn("Could not close pairing socket:", err?.message || err);
-        }
+        // Keep this socket alive: ROMA MD uses the Pair-web API as its
+        // WhatsApp transport. Closing it here would make /api/bot/* fail.
       }
 
       if (connection === "close") {
