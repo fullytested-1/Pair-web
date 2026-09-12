@@ -293,22 +293,8 @@ async function startSocket(sessionId, phoneNumber, mode, restartCount = 0) {
         });
 
         console.log("WhatsApp connected:", sessionId, userJid || "");
-
-        // Send only the opaque session identifier to the connected account.
-        // Never send serialized Baileys credentials/auth state through chat.
-        if (userJid) {
-          try {
-            await sock.sendMessage(userJid, {
-              text: `*✅ ROMA SESSION ID*\\n\\n${sessionId}\\n\\n⚠️ Keep this ID private.`
-            });
-            console.log("Session ID message sent:", sessionId);
-          } catch (messageError) {
-            console.error("Session ID message failed:", {
-              sessionId,
-              message: messageError?.message || messageError
-            });
-          }
-        }
+        // Session ID delivery is intentionally disabled here.
+        // The web UI/API exposes only the opaque ROMA~ session ID.
       }
 
       if (connection === "close") {
