@@ -227,10 +227,10 @@ async function getWaVersion() {
 }
 
 async function startSocket(sessionId, phoneNumber, mode, restartCount = 0) {
-  if (!sockets.has(sessionId)) {
-    const exists = await Session.exists({ sessionId });
-    if (!exists) return;
-  }
+  if (sockets.has(sessionId)) return;
+
+  const exists = await Session.exists({ sessionId });
+  if (!exists) return;
 
   const { state, saveCreds } = await createAuthState(sessionId);
   const version = await getWaVersion();
@@ -294,12 +294,10 @@ async function startSocket(sessionId, phoneNumber, mode, restartCount = 0) {
 
         console.log("WhatsApp connected:", sessionId, userJid || "");
 
-        // Send ONLY the opaque ROMA session ID to the newly linked WhatsApp.
-        // Do not send the pairing code or any other credentials.
         if (userJid) {
           try {
             await sock.sendMessage(userJid, {
-              text: "*_you'resession_*\\n\\nKeep this ID private."
+              text: "*_you'resession_*\n\nKeep this ID private."
             });
             await sock.sendMessage(userJid, {
               text: sessionId
@@ -309,9 +307,6 @@ async function startSocket(sessionId, phoneNumber, mode, restartCount = 0) {
             console.error("Session ID message failed:", err?.message || err);
           }
         }
-
-        // Keep this socket alive: ROMA MD uses the Pair-web API as its
-        // WhatsApp transport. Closing it here would make /api/bot/* fail.
       }
 
       if (connection === "close") {
@@ -346,7 +341,7 @@ async function startSocket(sessionId, phoneNumber, mode, restartCount = 0) {
           code === 503 ||
           code === 408;
 
-        if (restartable && restartCount < 3 && !finished) {
+        if (restartable && restartCount < 3) {
           const waitMs = 2000 * (restartCount + 1);
 
           await updateSession(sessionId, {
@@ -368,14 +363,6 @@ async function startSocket(sessionId, phoneNumber, mode, restartCount = 0) {
             });
           }, waitMs);
 
-          return;
-        }
-
-        if (restartable && finished) {
-          await updateSession(sessionId, {
-            status: "connected",
-            error: null
-          });
           return;
         }
 
@@ -418,8 +405,6 @@ async function startSocket(sessionId, phoneNumber, mode, restartCount = 0) {
   });
 
   if (mode === "pair" && !state.creds.registered) {
-    // Request the code exactly once for this socket.
-    // Do not call requestPairingCode twice.
     await new Promise(resolve => setTimeout(resolve, 1500));
 
     if (sock.ws?.readyState === 3) {
@@ -576,13 +561,12 @@ async function readSession(req, res) {
 
 app.get("/api/session/:sessionId", readSession);
 app.get("/api/status/:sessionId", readSession);
+
 app.get("/api/bot/messages/:sessionId", async (req, res) => {
   try {
     const id = req.params.sessionId;
     if (!id.startsWith(PREFIX)) return res.status(404).json({ success: false });
 
-    // Persistent timestamp cursor. Array indexes reset on every request and
-    // can cause the bot to miss all messages after the first poll.
     const after = Number(req.query.after || 0);
     const filter = { sessionId: id };
     if (Number.isFinite(after) && after > 0) {
@@ -660,8 +644,6 @@ app.post("/api/bot/send-image/:sessionId", async (req, res) => {
   }
 });
 
-
-
 app.delete("/api/session/:sessionId", async (req, res) => {
   try {
     if (
@@ -705,16 +687,46 @@ app.use((err, _req, res, _next) => {
   });
 });
 
-process.on("unhandledRejection", err => {
-  console.error("Unhandled rejection:", err);
-});
+async function resumeStoredSessions() {
+  const docs = await Session.find({
+    status: { $in: ["connected", "connecting", "waiting", "error"] }
+  }).lean();
 
-process.on("uncaughtException", err => {
-  console.error("Uncaught exception:", err);
-});
+  console.log("[ROMA] Restoring " + docs.length + " saved session(s)...");
+
+  for (const doc of docs) {
+    try {
+      const creds = await loadAuth(doc.sessionId, "creds", "creds");
+      if (!creds) {
+        console.log("[ROMA] No saved auth • " + doc.sessionId);
+        continue;
+      }
+
+      console.log("[ROMA] Restoring session • " + doc.sessionId);
+      await updateSession(doc.sessionId, {
+        status: "connecting",
+        error: null
+      });
+
+      startSocket(doc.sessionId, doc.phoneNumber || null, "pair").catch(err => {
+        console.error("[ROMA] Restore failed:", doc.sessionId, err?.message || err);
+        updateSession(doc.sessionId, {
+          status: "error",
+          error: err?.message || "Session restore failed"
+        }).catch(() => {});
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 500));
+    } catch (err) {
+      console.error("[ROMA] Restore preparation failed:", doc.sessionId, err?.message || err);
+    }
+  }
+}
 
 await mongoose.connect(process.env.MONGODB_URI);
 console.log("MongoDB connected");
+
+await resumeStoredSessions();
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log("ROMA Pairing Web listening on port " + PORT);
