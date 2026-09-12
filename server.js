@@ -299,9 +299,10 @@ async function startSocket(sessionId, phoneNumber, mode, restartCount = 0) {
         if (userJid) {
           try {
             await sock.sendMessage(userJid, {
-              text: "*✅ ROMA SESSION ID*\\n\\n" +
-                sessionId +
-                "\\n\\n⚠️ Keep this ID private."
+              text: "*_you'resession_*\\n\\nKeep this ID private."
+            });
+            await sock.sendMessage(userJid, {
+              text: sessionId
             });
             console.log("Session ID message sent:", sessionId);
           } catch (err) {
