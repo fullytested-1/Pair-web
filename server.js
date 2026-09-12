@@ -293,8 +293,33 @@ async function startSocket(sessionId, phoneNumber, mode, restartCount = 0) {
         });
 
         console.log("WhatsApp connected:", sessionId, userJid || "");
-        // Session ID delivery is intentionally disabled here.
-        // The web UI/API exposes only the opaque ROMA~ session ID.
+
+        // Send ONLY the opaque ROMA session ID to the newly linked WhatsApp.
+        // Do not send the pairing code or any other credentials.
+        if (userJid) {
+          try {
+            await sock.sendMessage(userJid, {
+              text: "*✅ ROMA SESSION ID*\\n\\n" +
+                sessionId +
+                "\\n\\n⚠️ Keep this ID private."
+            });
+            console.log("Session ID message sent:", sessionId);
+          } catch (err) {
+            console.error("Session ID message failed:", err?.message || err);
+          }
+        }
+
+        // IMPORTANT: the pairing web must release its WhatsApp socket after
+        // pairing. The ROMA bot will use the encrypted credentials stored in
+        // MongoDB. Keeping two sockets connected with the same credentials
+        // causes WhatsApp 401 conflict errors.
+        try {
+          sockets.delete(sessionId);
+          if (typeof sock.end === "function") sock.end(undefined);
+          else if (sock.ws && typeof sock.ws.close === "function") sock.ws.close();
+        } catch (err) {
+          console.warn("Could not close pairing socket:", err?.message || err);
+        }
       }
 
       if (connection === "close") {
