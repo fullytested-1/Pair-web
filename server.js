@@ -580,11 +580,33 @@ app.get("/api/bot/messages/:sessionId", async (req, res) => {
   try {
     const id = req.params.sessionId;
     if (!id.startsWith(PREFIX)) return res.status(404).json({ success: false });
+
+    // Persistent timestamp cursor. Array indexes reset on every request and
+    // can cause the bot to miss all messages after the first poll.
     const after = Number(req.query.after || 0);
-    const docs = await BotMessage.find({ sessionId: id }).sort({ createdAt: 1 }).limit(100).lean();
-    const messages = docs.map((x, i) => ({ id: x.messageId, from: x.from, text: x.text, createdAt: x.createdAt, cursor: i + 1 }));
-    const filtered = after ? messages.filter(x => x.cursor > after) : messages;
-    res.json({ success: true, messages: filtered, cursor: messages.length ? messages[messages.length - 1].cursor : after });
+    const filter = { sessionId: id };
+    if (Number.isFinite(after) && after > 0) {
+      filter.createdAt = { $gt: new Date(after) };
+    }
+
+    const docs = await BotMessage.find(filter)
+      .sort({ createdAt: 1, _id: 1 })
+      .limit(100)
+      .lean();
+
+    const messages = docs.map(x => ({
+      id: x.messageId,
+      from: x.from,
+      text: x.text,
+      createdAt: x.createdAt,
+      cursor: new Date(x.createdAt).getTime()
+    }));
+
+    const latest = messages.length
+      ? messages[messages.length - 1].cursor
+      : after;
+
+    res.json({ success: true, messages, cursor: latest });
   } catch (err) {
     res.status(500).json({ success: false, error: "Unable to read bot messages" });
   }
