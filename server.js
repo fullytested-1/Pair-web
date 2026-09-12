@@ -583,7 +583,8 @@ async function readSession(req, res) {
 }
 
 app.get("/api/session/:sessionId", readSession);
-app.get("/api/status/:sessionId", readSession);\napp.get("/api/bot/messages/:sessionId", async (req, res) => {
+app.get("/api/status/:sessionId", readSession);
+app.get("/api/bot/messages/:sessionId", async (req, res) => {
   try {
     const id = req.params.sessionId;
     if (!id.startsWith(PREFIX)) return res.status(404).json({ success: false });
